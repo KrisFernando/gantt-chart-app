@@ -2,7 +2,16 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
-
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 
 const generateMonths = (count = 1) => {
   const months = [];
@@ -84,6 +93,10 @@ const GanttChart = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#000000');
   //const [isResizing, setIsResizing] = useState(false);
+
+  const [showDeletePhaseDialog, setShowDeletePhaseDialog] = useState(false);
+  const [showDeleteTaskDialog, setShowDeleteTaskDialog] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
 
 
   // Save data to localStorage
@@ -167,6 +180,37 @@ const GanttChart = () => {
     }));
   };
 
+  const handlePhaseDeleteClick = (phaseId) => {
+    setItemToDelete({ type: 'phase', id: phaseId });
+    setShowDeletePhaseDialog(true);
+  };
+
+  const handleTaskDeleteClick = (phaseId, taskId) => {
+    setItemToDelete({ type: 'task', phaseId, taskId });
+    setShowDeleteTaskDialog(true);
+  };
+
+  const confirmDelete = () => {
+    if (!itemToDelete) return;
+
+    if (itemToDelete.type === 'phase') {
+      setPhases(phases.filter(p => p.id !== itemToDelete.id));
+    } else if (itemToDelete.type === 'task') {
+      setPhases(phases.map(phase => {
+        if (phase.id === itemToDelete.phaseId) {
+          return {
+            ...phase,
+            tasks: phase.tasks.filter(task => task.id !== itemToDelete.taskId)
+          };
+        }
+        return phase;
+      }));
+    }
+
+    setShowDeletePhaseDialog(false);
+    setShowDeleteTaskDialog(false);
+    setItemToDelete(null);
+  };
 
   return (
     <div ref={containerRef} className="flex h-screen bg-gray-100 relative">
@@ -213,7 +257,7 @@ const GanttChart = () => {
                       <Plus size={14} />
                     </button>
                     <button
-                      onClick={() => setPhases(phases.filter(p => p.id !== phase.id))}
+                      onClick={() => handlePhaseDeleteClick(phase.id)}
                       className="text-red-500 hover:text-red-700"
                     >
                       <X size={14} />
@@ -282,7 +326,7 @@ const GanttChart = () => {
                       min="1"
                     />
                     <button
-                      onClick={() => removeTask(phase.id, task.id)}
+                      onClick={() => handleTaskDeleteClick(phase.id, task.id)}
                       className="text-red-500 hover:text-red-700"
                     >
                       <X size={14} />
@@ -401,6 +445,46 @@ const GanttChart = () => {
             })}
           </div>
         ))}
+
+        {/* Delete Phase Confirmation Dialog */}
+      <AlertDialog open={showDeletePhaseDialog} onOpenChange={setShowDeletePhaseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Phase</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this phase? This action cannot be undone, and all tasks within this phase will be deleted.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeletePhaseDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Task Confirmation Dialog */}
+      <AlertDialog open={showDeleteTaskDialog} onOpenChange={setShowDeleteTaskDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this task? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setShowDeleteTaskDialog(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
         {/* Color picker modal */}
         {showColorPicker && (
