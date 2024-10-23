@@ -86,6 +86,8 @@ const GanttChart = () => {
       return [];
     }
   });
+
+  const [isClient, setIsClient] = useState(false)
   const [months, setMonths] = useState(generateMonths(1));
   const [sidebarWidth, setSidebarWidth] = useState('25%');
   const [isResizing, setIsResizing] = useState(false);
@@ -100,7 +102,9 @@ const GanttChart = () => {
 
 
   // Save data to localStorage
+
   useEffect(() => {
+    setIsClient(true);
     localStorage.setItem('ganttData', JSON.stringify(phases));
   }, [phases]);
 
@@ -290,6 +294,7 @@ const GanttChart = () => {
                     <input
                       type="date"
                       value={task.startDate}
+                      style={{width: '105px'}}
                       onChange={(e) => {
                         setPhases(phases.map(p => {
                           if (p.id === phase.id) {
@@ -308,7 +313,7 @@ const GanttChart = () => {
                     <input
                       type="number"
                       value={task.duration}
-                      style={{width: '35px'}}
+                      style={{width: '35px', textAlign: 'right'}}
                       onChange={(e) => {
                         setPhases(phases.map(p => {
                           if (p.id === phase.id) {
