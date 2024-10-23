@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Plus, X, ChevronLeft, ChevronRight } from "lucide-react";
 
+
 const generateMonths = (count = 1) => {
   const months = [];
   const now = new Date();
@@ -154,6 +155,19 @@ const GanttChart = () => {
     ));
   };
 
+  const removeTask = (phaseId: number, taskId: number) => {
+    setPhases(phases.map(phase => {
+      if (phase.id === phaseId) {
+        return {
+          ...phase,
+          tasks: phase.tasks.filter(task => task.id !== taskId)
+        };
+      }
+      return phase;
+    }));
+  };
+
+
   return (
     <div ref={containerRef} className="flex h-screen bg-gray-100 relative">
       {/* Sidebar */}
@@ -250,6 +264,7 @@ const GanttChart = () => {
                     <input
                       type="number"
                       value={task.duration}
+                      style={{width: '35px'}}
                       onChange={(e) => {
                         setPhases(phases.map(p => {
                           if (p.id === phase.id) {
@@ -266,6 +281,12 @@ const GanttChart = () => {
                       className="w-16 text-sm"
                       min="1"
                     />
+                    <button
+                      onClick={() => removeTask(phase.id, task.id)}
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      <X size={14} />
+                    </button>                    
                   </div>
                 </div>
               ))}
@@ -316,7 +337,7 @@ const GanttChart = () => {
               <div
                 key={index}
                 className="flex-1 p-2 text-center border-r border-gray-200"
-                style={{ minWidth: `${month.days * 20}px` }}
+                style={{ minWidth: `${month.days * 8}px` }}
               >
                 {month.name} {month.year}
               </div>
@@ -327,7 +348,7 @@ const GanttChart = () => {
               <div
                 key={index}
                 className="flex-1 border-r border-gray-200"
-                style={{ minWidth: `${month.days * 20}px` }}
+                style={{ minWidth: `${month.days * 8}px` }}
               >
                 <div className="grid" style={{ gridTemplateColumns: `repeat(${month.days}, 1fr)` }}>
                   {Array.from({ length: month.days }).map((_, day) => (
