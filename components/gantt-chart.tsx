@@ -94,11 +94,12 @@ const GanttChart = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [customColor, setCustomColor] = useState('#000000');
-  //const [isResizing, setIsResizing] = useState(false);
-
   const [showDeletePhaseDialog, setShowDeletePhaseDialog] = useState(false);
   const [showDeleteTaskDialog, setShowDeleteTaskDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [showAddMonthDialog, setShowAddMonthDialog] = useState(false);
+  const [showRemoveMonthDialog, setShowRemoveMonthDialog] = useState(false);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(null);
 
 
   // Save data to localStorage
@@ -172,18 +173,6 @@ const GanttChart = () => {
     ));
   };
 
-  const removeTask = (phaseId: number, taskId: number) => {
-    setPhases(phases.map(phase => {
-      if (phase.id === phaseId) {
-        return {
-          ...phase,
-          tasks: phase.tasks.filter(task => task.id !== taskId)
-        };
-      }
-      return phase;
-    }));
-  };
-
   const handlePhaseDeleteClick = (phaseId) => {
     setItemToDelete({ type: 'phase', id: phaseId });
     setShowDeletePhaseDialog(true);
@@ -216,6 +205,30 @@ const GanttChart = () => {
     setItemToDelete(null);
   };
 
+  const addMonthAfter = (index) => {
+    const referenceMonth = months[index];
+    const newDate = new Date(referenceMonth.year, referenceMonth.month + 1, 1);
+    
+    const newMonth = {
+      name: newDate.toLocaleString('default', { month: 'short' }),
+      year: newDate.getFullYear(),
+      month: newDate.getMonth(),
+      days: new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate(),
+      startDate: newDate
+    };
+
+    const newMonths = [...months];
+    newMonths.splice(index + 1, 0, newMonth);
+    setMonths(newMonths);
+  };
+
+  const removeMonth = (index) => {
+    if (months.length <= 1) return; // Prevent removing last month
+    const newMonths = months.filter((_, i) => i !== index);
+    setMonths(newMonths);
+  };
+
+
   return (
     <div ref={containerRef} className="flex h-screen bg-gray-100 relative">
       {/* Sidebar */}
@@ -228,7 +241,6 @@ const GanttChart = () => {
           <button
             onClick={addPhase}
             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-            style={{ marginBottom: '56px' }}
           >
             <Plus size={16} /> Add Phase
           </button>
@@ -366,39 +378,40 @@ const GanttChart = () => {
       <div className="flex-1 overflow-x-auto">
         {/* Month Headers */}
         <div className="sticky top-0 bg-white border-b border-gray-200">
-          <div className="flex items-center p-4 gap-4">
-            <button
-              onClick={() => setMonths(generateMonths(months.length - 1))}
-              className="p-2 rounded hover:bg-gray-100"
-              disabled={months.length < 2}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button
-              onClick={() => setMonths(generateMonths(months.length + 1))}
-              className="p-2 rounded hover:bg-gray-100"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="flex">
-            {months.map((month, index) => (
-              <div
-                key={index}
-                className="flex-1 p-2 text-center border-r border-gray-200"
-                style={{ minWidth: `${month.days * 8}px` }}
-              >
-                {month.name} {month.year}
-              </div>
-            ))}
-          </div>
           <div className="flex">
             {months.map((month, index) => (
               <div
                 key={index}
                 className="flex-1 border-r border-gray-200"
-                style={{ minWidth: `${month.days * 8}px` }}
+                style={{ minWidth: `${month.days * 8}px`,height: '72px' }}
               >
+                <div className="p-2 flex items-center justify-between">
+                  <span className="flex-1 text-center">
+                    {month.name} {month.year}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setSelectedMonthIndex(index);
+                        setShowAddMonthDialog(true);
+                      }}
+                      className="text-blue-500 hover:text-blue-700"
+                    >
+                      <Plus size={14} />
+                    </button>
+                    {months.length > 1 && (
+                      <button
+                        onClick={() => {
+                          setSelectedMonthIndex(index);
+                          setShowRemoveMonthDialog(true);
+                        }}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <div className="grid" style={{ gridTemplateColumns: `repeat(${month.days}, 1fr)` }}>
                   {Array.from({ length: month.days }).map((_, day) => (
                     <div key={day} className="h-6 border-r border-gray-100" />
@@ -450,6 +463,63 @@ const GanttChart = () => {
             })}
           </div>
         ))}
+
+        {/* Add Month Dialog */}
+        <AlertDialog open={showAddMonthDialog} onOpenChange={setShowAddMonthDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Add Month</AlertDialogTitle>
+              <AlertDialogDescription>
+                Do you want to add the next month after {selectedMonthIndex !== null ? months[selectedMonthIndex].name : ''}?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowAddMonthDialog(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (selectedMonthIndex !== null) {
+                    addMonthAfter(selectedMonthIndex);
+                  }
+                  setShowAddMonthDialog(false);
+                }}
+                className="bg-blue-500 hover:bg-blue-600"
+              >
+                Add Month
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Remove Month Dialog */}
+        <AlertDialog open={showRemoveMonthDialog} onOpenChange={setShowRemoveMonthDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove Month</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to remove {selectedMonthIndex !== null ? months[selectedMonthIndex].name : ''}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowRemoveMonthDialog(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (selectedMonthIndex !== null) {
+                    removeMonth(selectedMonthIndex);
+                  }
+                  setShowRemoveMonthDialog(false);
+                }}
+                className="bg-red-500 hover:bg-red-600"
+              >
+                Remove Month
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
 
         {/* Delete Phase Confirmation Dialog */}
       <AlertDialog open={showDeletePhaseDialog} onOpenChange={setShowDeletePhaseDialog}>
