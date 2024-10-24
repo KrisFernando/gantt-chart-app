@@ -31,36 +31,90 @@ const generateMonths = (count = 1) => {
 
 const calculateTaskPosition = (startDate, duration, months) => {
   const taskStart = new Date(startDate);
-  const viewStart = months[0].startDate;
-  const totalDays = months.reduce((acc, month) => acc + month.days, 0);
+  taskStart.setHours(0, 0, 0, 0);
 
-  const daysDiff = Math.floor((taskStart - viewStart) / (1000 * 60 * 60 * 24));
-  const left = Math.max((daysDiff / totalDays) * 100, 0);
-  const width = (duration / totalDays) * 100;
+  // Find which month this task belongs to
+  let monthIndex = -1;
+  let daysBeforeTask = 0;
+  let totalDays = 0;
 
-  return { left: `${left}%`, width: `${width}%` };
+  for (let i = 0; i < months.length; i++) {
+    const monthStart = new Date(months[i].year, months[i].month, 1);
+    const monthEnd = new Date(months[i].year, months[i].month + 1, 0);
+    monthEnd.setHours(23, 59, 59, 999);
+
+    if (taskStart >= monthStart && taskStart <= monthEnd) {
+      monthIndex = i;
+      break;
+    }
+    daysBeforeTask += months[i].days;
+  }
+
+  // Calculate total days in view
+  totalDays = months.reduce((acc, month) => acc + month.days, 0);
+
+  // If task starts in visible months
+  if (monthIndex >= 0) {
+    const monthStart = new Date(months[monthIndex].year, months[monthIndex].month, 1);
+    const dayInMonth = taskStart.getDate() - 1; // -1 because dates are 1-based
+    const daysFromStart = daysBeforeTask + dayInMonth;
+
+    const left = (daysFromStart / totalDays) * 100;
+    const width = (duration / totalDays) * 100;
+
+    return { left: `${left}%`, width: `${width}%` };
+  }
+
+  // If task starts before visible range
+  return { left: '0%', width: '0%' };
 };
 
 const calculatePhaseSpan = (tasks, months) => {
   if (!tasks.length) return null;
 
-  const dates = tasks.map(task => {
-    const start = new Date(task.startDate);
-    const end = new Date(start);
-    end.setDate(end.getDate() + task.duration);
-    return { start, end };
-  });
+  const firstMonth = months[0];
+  const lastMonth = months[months.length - 1];
+  const viewStart = new Date(firstMonth.year, firstMonth.month, 1);
+  const viewEnd = new Date(lastMonth.year, lastMonth.month + 1, 0);
 
-  const earliestStart = new Date(Math.min(...dates.map(d => d.start)));
-  const latestEnd = new Date(Math.max(...dates.map(d => d.end)));
-
-  const viewStart = months[0].startDate;
   const totalDays = months.reduce((acc, month) => acc + month.days, 0);
 
-  const startDiff = Math.floor((earliestStart - viewStart) / (1000 * 60 * 60 * 24));
-  const duration = Math.ceil((latestEnd - earliestStart) / (1000 * 60 * 60 * 24));
+  // Find earliest start and latest end
+  let earliestStart = null;
+  let latestEnd = null;
 
-  const left = Math.max((startDiff / totalDays) * 100, 0);
+  tasks.forEach(task => {
+    const taskStart = new Date(task.startDate);
+    taskStart.setHours(0, 0, 0, 0);
+    const taskEnd = new Date(taskStart);
+    taskEnd.setDate(taskStart.getDate() + task.duration);
+
+    if (!earliestStart || taskStart < earliestStart) earliestStart = taskStart;
+    if (!latestEnd || taskEnd > latestEnd) latestEnd = taskEnd;
+  });
+
+  if (!earliestStart || !latestEnd) return null;
+
+  // Calculate position
+  let daysBeforeStart = 0;
+  let found = false;
+
+  for (const month of months) {
+    const monthStart = new Date(month.year, month.month, 1);
+    const monthEnd = new Date(month.year, month.month + 1, 0);
+
+    if (earliestStart >= monthStart && earliestStart <= monthEnd) {
+      daysBeforeStart += earliestStart.getDate() - 1;
+      found = true;
+      break;
+    }
+    daysBeforeStart += month.days;
+
+    if (!found) return null;
+  }
+
+  const left = (daysBeforeStart / totalDays) * 100;
+  const duration = Math.ceil((latestEnd - earliestStart) / (1000 * 60 * 60 * 24));
   const width = (duration / totalDays) * 100;
 
   return { left: `${left}%`, width: `${width}%` };
@@ -97,8 +151,8 @@ const GanttChart = () => {
   const [showDeletePhaseDialog, setShowDeletePhaseDialog] = useState(false);
   const [showDeleteTaskDialog, setShowDeleteTaskDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [showAddMonthDialog, setShowAddMonthDialog] = useState(false);
   const [showRemoveMonthDialog, setShowRemoveMonthDialog] = useState(false);
+  const [monthToRemove, setMonthToRemove] = useState(null);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(null);
 
 
@@ -207,27 +261,42 @@ const GanttChart = () => {
 
   const addMonthAfter = (index) => {
     const referenceMonth = months[index];
+    // Create a date object for the first day of the next month
     const newDate = new Date(referenceMonth.year, referenceMonth.month + 1, 1);
-    
-    const newMonth = {
-      name: newDate.toLocaleString('default', { month: 'short' }),
-      year: newDate.getFullYear(),
-      month: newDate.getMonth(),
-      days: new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate(),
-      startDate: newDate
-    };
 
-    const newMonths = [...months];
-    newMonths.splice(index + 1, 0, newMonth);
-    setMonths(newMonths);
+    // Check if this month already exists
+    const exists = months.some(m =>
+      m.year === newDate.getFullYear() &&
+      m.month === newDate.getMonth()
+    );
+
+    if (!exists) {
+      const newMonth = {
+        name: newDate.toLocaleString('default', { month: 'short' }),
+        year: newDate.getFullYear(),
+        month: newDate.getMonth(),
+        days: new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0).getDate(),
+        startDate: newDate
+      };
+
+      const newMonths = [...months];
+      newMonths.splice(index + 1, 0, newMonth);
+      setMonths(newMonths);
+    }
   };
 
   const removeMonth = (index) => {
     if (months.length <= 1) return; // Prevent removing last month
-    const newMonths = months.filter((_, i) => i !== index);
-    setMonths(newMonths);
+    setMonths(months.filter((_, i) => i !== index));
   };
 
+  const getNextMonth = (year, month) => {
+    const nextDate = new Date(year, month + 1, 1);
+    return {
+      year: nextDate.getFullYear(),
+      month: nextDate.getMonth()
+    };
+  };
 
   return (
     <div ref={containerRef} className="flex h-screen bg-gray-100 relative">
@@ -306,7 +375,7 @@ const GanttChart = () => {
                     <input
                       type="date"
                       value={task.startDate}
-                      style={{width: '105px'}}
+                      style={{ width: '105px' }}
                       onChange={(e) => {
                         setPhases(phases.map(p => {
                           if (p.id === phase.id) {
@@ -325,7 +394,7 @@ const GanttChart = () => {
                     <input
                       type="number"
                       value={task.duration}
-                      style={{width: '35px', textAlign: 'right'}}
+                      style={{ width: '35px', textAlign: 'right' }}
                       onChange={(e) => {
                         setPhases(phases.map(p => {
                           if (p.id === phase.id) {
@@ -347,7 +416,7 @@ const GanttChart = () => {
                       className="text-red-500 hover:text-red-700"
                     >
                       <X size={14} />
-                    </button>                    
+                    </button>
                   </div>
                 </div>
               ))}
@@ -383,26 +452,41 @@ const GanttChart = () => {
               <div
                 key={index}
                 className="flex-1 border-r border-gray-200"
-                style={{ minWidth: `${month.days * 8}px`,height: '72px' }}
+                style={{ minWidth: `${month.days * 8}px` }}
               >
                 <div className="p-2 flex items-center justify-between">
                   <span className="flex-1 text-center">
                     {month.name} {month.year}
                   </span>
                   <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedMonthIndex(index);
-                        setShowAddMonthDialog(true);
-                      }}
-                      className="text-blue-500 hover:text-blue-700"
-                    >
-                      <Plus size={14} />
-                    </button>
-                    {months.length > 1 && (
+                    {(() => {
+                      // Get next month's info
+                      const nextDate = new Date(month.year, month.month + 1, 1);
+                      const nextYear = nextDate.getFullYear();
+                      const nextMonth = nextDate.getMonth();
+
+                      // Check if next month exists in our months array
+                      const nextMonthExists = months.some(m =>
+                        m.year === nextYear && m.month === nextMonth
+                      );
+
+                      // Only show + button if next month doesn't exist
+                      if (!nextMonthExists) {
+                        return (
+                          <button
+                            onClick={() => addMonthAfter(index)}
+                            className="text-blue-500 hover:text-blue-700"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        );
+                      }
+                      return null;
+                    })()}
+                    {months.length > 1 && (index === 0 || index === months.length - 1) && (
                       <button
                         onClick={() => {
-                          setSelectedMonthIndex(index);
+                          setMonthToRemove({ index, name: month.name });
                           setShowRemoveMonthDialog(true);
                         }}
                         className="text-red-500 hover:text-red-700"
@@ -465,28 +549,32 @@ const GanttChart = () => {
         ))}
 
         {/* Add Month Dialog */}
-        <AlertDialog open={showAddMonthDialog} onOpenChange={setShowAddMonthDialog}>
+        <AlertDialog open={showRemoveMonthDialog} onOpenChange={setShowRemoveMonthDialog}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Add Month</AlertDialogTitle>
+              <AlertDialogTitle>Remove Month</AlertDialogTitle>
               <AlertDialogDescription>
-                Do you want to add the next month after {selectedMonthIndex !== null ? months[selectedMonthIndex].name : ''}?
+                Are you sure you want to remove {monthToRemove?.name || ''}? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setShowAddMonthDialog(false)}>
+              <AlertDialogCancel onClick={() => {
+                setShowRemoveMonthDialog(false);
+                setMonthToRemove(null);
+              }}>
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
                 onClick={() => {
-                  if (selectedMonthIndex !== null) {
-                    addMonthAfter(selectedMonthIndex);
+                  if (monthToRemove !== null) {
+                    removeMonth(monthToRemove.index);
                   }
-                  setShowAddMonthDialog(false);
+                  setShowRemoveMonthDialog(false);
+                  setMonthToRemove(null);
                 }}
-                className="bg-blue-500 hover:bg-blue-600"
+                className="bg-red-500 hover:bg-red-600"
               >
-                Add Month
+                Remove
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -522,44 +610,44 @@ const GanttChart = () => {
 
 
         {/* Delete Phase Confirmation Dialog */}
-      <AlertDialog open={showDeletePhaseDialog} onOpenChange={setShowDeletePhaseDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Phase</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this phase? This action cannot be undone, and all tasks within this phase will be deleted.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowDeletePhaseDialog(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <AlertDialog open={showDeletePhaseDialog} onOpenChange={setShowDeletePhaseDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Phase</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this phase? This action cannot be undone, and all tasks within this phase will be deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowDeletePhaseDialog(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Delete Task Confirmation Dialog */}
-      <AlertDialog open={showDeleteTaskDialog} onOpenChange={setShowDeleteTaskDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Task</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this task? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowDeleteTaskDialog(false)}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Delete Task Confirmation Dialog */}
+        <AlertDialog open={showDeleteTaskDialog} onOpenChange={setShowDeleteTaskDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Task</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this task? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setShowDeleteTaskDialog(false)}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction onClick={confirmDelete} className="bg-red-500 hover:bg-red-600">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Color picker modal */}
         {showColorPicker && (
