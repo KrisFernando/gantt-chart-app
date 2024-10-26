@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
+import { markAsUntransferable } from "worker_threads";
 
 const generateMonths = (count = 1) => {
   const months = [];
@@ -76,48 +77,45 @@ const calculatePhaseSpan = (tasks, months) => {
   const lastMonth = months[months.length - 1];
   const viewStart = new Date(firstMonth.year, firstMonth.month, 1);
   const viewEnd = new Date(lastMonth.year, lastMonth.month + 1, 0);
-
+  
   const totalDays = months.reduce((acc, month) => acc + month.days, 0);
-
+  
   // Find earliest start and latest end
   let earliestStart = null;
   let latestEnd = null;
-
+  
   tasks.forEach(task => {
     const taskStart = new Date(task.startDate);
     taskStart.setHours(0, 0, 0, 0);
     const taskEnd = new Date(taskStart);
     taskEnd.setDate(taskStart.getDate() + task.duration);
-
+    
     if (!earliestStart || taskStart < earliestStart) earliestStart = taskStart;
     if (!latestEnd || taskEnd > latestEnd) latestEnd = taskEnd;
   });
-
+  
   if (!earliestStart || !latestEnd) return null;
 
-  // Calculate position
-  let daysBeforeStart = 0;
-  let found = false;
-
-  for (const month of months) {
-    const monthStart = new Date(month.year, month.month, 1);
-    const monthEnd = new Date(month.year, month.month + 1, 0);
-
-    if (earliestStart >= monthStart && earliestStart <= monthEnd) {
-      daysBeforeStart += earliestStart.getDate() - 1;
-      found = true;
-      break;
-    }
-    daysBeforeStart += month.days;
-
-    if (!found) return null;
+  // Calculate days from view start to task start
+  let daysFromViewStart = 0;
+  let currentDate = new Date(viewStart);
+  
+  while (currentDate < earliestStart) {
+    currentDate.setDate(currentDate.getDate() + 1);
+    daysFromViewStart++;
   }
 
-  const left = (daysBeforeStart / totalDays) * 100;
+  // Calculate total duration
   const duration = Math.ceil((latestEnd - earliestStart) / (1000 * 60 * 60 * 24));
+  
+  // Calculate position
+  const left = (daysFromViewStart / totalDays) * 100;
   const width = (duration / totalDays) * 100;
-
-  return { left: `${left}%`, width: `${width}%` };
+  
+  return { 
+    left: `${Math.max(0, left)}%`, 
+    width: `${Math.min(width, 100 - Math.max(0, left))}%` 
+  };
 };
 
 const defaultColors = [
@@ -454,11 +452,23 @@ const GanttChart = () => {
                 className="flex-1 border-r border-gray-200"
                 style={{ minWidth: `${month.days * 8}px` }}
               >
-                <div className="p-2 flex items-center justify-between">
+                <div className="p-2 flex items-center justify-between"
+                style={{marginTop: '8px'}}>
                   <span className="flex-1 text-center">
                     {month.name} {month.year}
                   </span>
                   <div className="flex gap-2">
+                  {months.length > 1 && (index === 0 || index === months.length - 1) && (
+                      <button
+                        onClick={() => {
+                          setMonthToRemove({ index, name: month.name });
+                          setShowRemoveMonthDialog(true);
+                        }}
+                        className="text-red-500 hover:text-red-700"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}                    
                     {(() => {
                       // Get next month's info
                       const nextDate = new Date(month.year, month.month + 1, 1);
@@ -483,17 +493,6 @@ const GanttChart = () => {
                       }
                       return null;
                     })()}
-                    {months.length > 1 && (index === 0 || index === months.length - 1) && (
-                      <button
-                        onClick={() => {
-                          setMonthToRemove({ index, name: month.name });
-                          setShowRemoveMonthDialog(true);
-                        }}
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <X size={14} />
-                      </button>
-                    )}
                   </div>
                 </div>
                 <div className="grid" style={{ gridTemplateColumns: `repeat(${month.days}, 1fr)` }}>
@@ -520,7 +519,8 @@ const GanttChart = () => {
                       style={{
                         backgroundColor: phase.color,
                         left: phaseSpan.left,
-                        width: phaseSpan.width
+                        width: phaseSpan.width,
+                        marginTop: '2px'
                       }}
                     />
                   );
@@ -539,7 +539,8 @@ const GanttChart = () => {
                     style={{
                       backgroundColor: phase.color,
                       left: position.left,
-                      width: position.width
+                      width: position.width,
+                      marginBottom: '2px'
                     }}
                   />
                 </div>
